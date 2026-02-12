@@ -1,0 +1,88 @@
+import folium
+import csv
+import pandas as pd
+from folium.plugins import MarkerCluster
+from folium.plugins import FastMarkerCluster
+import numpy as np
+
+
+
+
+#add more tiles 
+
+map = folium.Map(location =[38.900115611746834, -77.02168612022783],  
+    tiles = None, 
+    zoom_start=13)
+
+# "CartoDB positron"
+keys = ("Address", "No. of units:", "Status:", "Website:", "Latitude", "Longitude")
+records = []
+
+with open(filename, 'r', errors='ignore') as csvfile:
+    reader = csv.DictReader(csvfile)
+    for row in reader:
+        records.append({key: row[key] for key in keys})
+        records = [x for x in records if all(x.values())]
+        
+
+for a in records:
+    a['No. of units:'] = float(a['No. of units:'])
+    a['Website:'] =  f"<a href={a['Website:']} style='color: black'; target='_blank'>{a['Address']}</a>"
+
+under_constuction = ['Under Construction, Not Yet Selling', 'Under Construction, Not Yet Leasing']
+planned = ['Planned']
+delivered = ['Delivered, Selling', 'Delivered, Leasing Up', 'Sold Out', 'Leased Up']
+
+
+for key, value in enumerate(records):
+    if value['Status:'] in under_constuction:
+        value['Marker_color'] = 'darkblue'
+        value["Status_comb"] = "Under Construction"
+    elif value['Status:'] in planned:
+        value['Marker_color'] = 'darkred'
+        value['Status_comb'] = "Planned"
+    else:
+        value['Marker_color'] = 'darkgreen'
+        value['Status_comb'] = "Delivered"
+
+#can I do it without changing to a dataframe - go straight from dictionary
+#add number of units to pop up info
+
+
+df_addresses = pd.DataFrame(records)
+df_addresses = df_addresses.rename(columns={'No. of units:': 'No_units'})
+df_addresses = df_addresses.rename(columns={'Website:': 'Website'})
+
+
+for grp_name, df_grp in df_addresses.groupby('Status_comb'):
+    feature_group = folium.FeatureGroup(grp_name)
+    for row in df_grp.itertuples():
+        
+        popup_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <body>
+            <h4 style="font-family: Arial, Helvetica, sans-serif; font-size: 12px;">{row.Website}</h4>
+        </body>
+        </html>
+        """
+        popup_content = popup_content.replace(". ", ". <br>")
+        iframe = folium.IFrame(popup_content,
+                       width=170,
+                       height=60)
+        marker = folium.Circle(
+            location=[row.Latitude, row.Longitude], 
+            
+            popup = folium.Popup(iframe, max_width=100),
+            
+            fill_color=row.Marker_color,
+            radius=row.No_units*.35,
+            weight=.05,
+            fill_opacity=.6).add_to(feature_group)
+    feature_group.add_to(map)
+    
+folium.TileLayer('OpenStreetMap').add_to(map)
+folium.TileLayer('CartoDB positron').add_to(map)
+
+folium.LayerControl().add_to(map)
+
