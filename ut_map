@@ -5,53 +5,44 @@ from folium.plugins import MarkerCluster
 from folium.plugins import FastMarkerCluster
 import numpy as np
 
-
-
-
-#add more tiles 
-
 map = folium.Map(location =[38.900115611746834, -77.02168612022783],  
     tiles = None, 
     zoom_start=13)
 
-# "CartoDB positron"
-keys = ("Address", "No. of units:", "Status:", "Website:", "Latitude", "Longitude")
-records = []
 
-with open(filename, 'r', errors='ignore') as csvfile:
-    reader = csv.DictReader(csvfile)
-    for row in reader:
-        records.append({key: row[key] for key in keys})
-        records = [x for x in records if all(x.values())]
-        
+df_addresses = pd.read_csv(filename)
 
-for a in records:
-    a['No. of units:'] = float(a['No. of units:'])
-    a['Website:'] =  f"<a href={a['Website:']} style='color: black'; target='_blank'>{a['Address']}</a>"
-
-under_constuction = ['Under Construction, Not Yet Selling', 'Under Construction, Not Yet Leasing']
-planned = ['Planned']
-delivered = ['Delivered, Selling', 'Delivered, Leasing Up', 'Sold Out', 'Leased Up']
-
-
-for key, value in enumerate(records):
-    if value['Status:'] in under_constuction:
-        value['Marker_color'] = 'darkblue'
-        value["Status_comb"] = "Under Construction"
-    elif value['Status:'] in planned:
-        value['Marker_color'] = 'darkred'
-        value['Status_comb'] = "Planned"
-    else:
-        value['Marker_color'] = 'darkgreen'
-        value['Status_comb'] = "Delivered"
-
-#can I do it without changing to a dataframe - go straight from dictionary
-#add number of units to pop up info
-
-
-df_addresses = pd.DataFrame(records)
 df_addresses = df_addresses.rename(columns={'No. of units:': 'No_units'})
 df_addresses = df_addresses.rename(columns={'Website:': 'Website'})
+df_addresses['Website_url'] = df_addresses.apply(lambda row: f"<a href={row['Website']} style='color: black'; target='_blank'>{row['Address']}</a>", axis=1)
+
+
+under_constuction = ['Under Construction, Not Yet Selling', 'Under Construction, Not Yet Leasing', 'Under Construction, Selling', 'Under Construction, Leasing Up']
+planned = ['Planned']
+delivered = ['Delivered, Selling',  'Delivered, Leasing Up', 'Sold Out', 'Leased Up']
+
+def status_merge_color(row):
+    if row['Status:'] in under_constuction:
+        return 'darkblue'
+    elif row['Status:'] in planned:
+        return 'darkred'
+    else:
+        return 'darkgreen'
+    
+def status_merge_value(row):
+    if row['Status:'] in under_constuction:
+        return 'Under Construction'
+    elif row['Status:'] in planned:
+        return 'Planned'
+    else:
+        return 'Delivered'
+
+df_addresses['Marker_color'] = df_addresses.apply(status_merge_color, axis=1)
+df_addresses['Status_comb'] = df_addresses.apply(status_merge_value, axis=1)
+
+df_addresses = df_addresses.dropna(subset=['No_units']) 
+df_addresses = df_addresses.dropna(subset=['Latitude']) 
+df_addresses = df_addresses.dropna(subset=['Longitude']) 
 
 
 for grp_name, df_grp in df_addresses.groupby('Status_comb'):
@@ -62,14 +53,15 @@ for grp_name, df_grp in df_addresses.groupby('Status_comb'):
         <!DOCTYPE html>
         <html>
         <body>
-            <h4 style="font-family: Arial, Helvetica, sans-serif; font-size: 12px;">{row.Website}</h4>
+            <h4 style="font-family: Arial, Helvetica, sans-serif; font-size: 12px;">{row.Website_url}</h4>
+            <h4 style="font-family: Arial, Helvetica, sans-serif; font-size: 12px;">{row.Size}</h4>
         </body>
         </html>
         """
         popup_content = popup_content.replace(". ", ". <br>")
         iframe = folium.IFrame(popup_content,
-                       width=170,
-                       height=60)
+                       width=180,
+                       height=70)
         marker = folium.Circle(
             location=[row.Latitude, row.Longitude], 
             
@@ -85,4 +77,3 @@ folium.TileLayer('OpenStreetMap').add_to(map)
 folium.TileLayer('CartoDB positron').add_to(map)
 
 folium.LayerControl().add_to(map)
-
